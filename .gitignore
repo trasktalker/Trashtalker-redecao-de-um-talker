@@ -1,0 +1,19 @@
+# Segredos (o modelo .env.example vai para o repositório)
+.env*
+!.env.example
+
+# Python e banco local descartável de testes
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+.test-postgres/
+
+# Vercel (vínculo local criado pela CLI)
+.vercel/
+
+# IDE, editor e sistema
+.vscode/
+.idea/
+.DS_Store
+*.pem
