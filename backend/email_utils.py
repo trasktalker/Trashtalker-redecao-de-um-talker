@@ -5,10 +5,20 @@ Envio de e-mails transacionais (redefinição de senha) via SMTP, usando
 só a biblioteca padrão do Python (smtplib) - sem dependência nova.
 """
 
+import logging
 import os
 import smtplib
 import ssl
 from email.mime.text import MIMEText
+
+
+logger = logging.getLogger(__name__)
+
+
+class PasswordResetSMTPError(RuntimeError):
+    def __init__(self, stage, port, error):
+        code = getattr(error, "smtp_code", "indisponível")
+        super().__init__(f"etapa={stage}, porta={port}, erro={type(error).__name__}, código SMTP={code}")
 
 
 def send_password_reset_email(to_email, reset_url):
@@ -54,13 +64,36 @@ def send_password_reset_email(to_email, reset_url):
     message["To"] = to_email
 
     tls_context = ssl.create_default_context()
-    if smtp_port == 465:
-        connection = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=10, context=tls_context)
-    else:
-        connection = smtplib.SMTP(smtp_host, smtp_port, timeout=10)
+    ports = (smtp_port,)
+    if smtp_host.lower() == "smtp.gmail.com" and smtp_port == 587:
+        ports = (587, 465)
 
-    with connection as server:
-        if smtp_port != 465:
-            server.starttls(context=tls_context)
-        server.login(smtp_user, smtp_password)
-        server.sendmail(smtp_from, [to_email], message.as_string())
+    for port in ports:
+        stage = "connect"
+        try:
+            if port == 465:
+                connection = smtplib.SMTP_SSL(smtp_host, port, timeout=10, context=tls_context)
+            else:
+                connection = smtplib.SMTP(smtp_host, port, timeout=10)
+
+            with connection as server:
+                if port != 465:
+                    stage = "starttls"
+                    server.starttls(context=tls_context)
+                stage = "login"
+                server.login(smtp_user, smtp_password)
+                stage = "sendmail"
+                server.sendmail(smtp_from, [to_email], message.as_string())
+                stage = "quit"
+            return
+        except OSError as error:
+            failure = PasswordResetSMTPError(stage, port, error)
+            # O Gmail oferece as duas portas. Só repita antes de autenticar ou enviar.
+            if (
+                port != ports[-1]
+                and stage in ("connect", "starttls")
+                and isinstance(error, (smtplib.SMTPServerDisconnected, ConnectionError, TimeoutError))
+            ):
+                logger.warning("SMTP de recuperação: %s. Tentando TLS implícito na porta 465.", failure)
+                continue
+            raise failure from None

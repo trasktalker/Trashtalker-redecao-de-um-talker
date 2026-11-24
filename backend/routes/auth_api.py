@@ -23,7 +23,7 @@ import re
 
 from flask import Blueprint, current_app, jsonify, request
 
-from backend.email_utils import send_password_reset_email
+from backend.email_utils import PasswordResetSMTPError, send_password_reset_email
 from backend.auth import (
     CONSENT_VERSION,
     clear_session_cookie,
@@ -165,6 +165,8 @@ def forgot_password():
         reset_url = f"{frontend_origin.rstrip('/')}/reset-password?token={token}"
         try:
             send_password_reset_email(user["email"], reset_url)
+        except PasswordResetSMTPError as error:
+            current_app.logger.error("Falha ao enviar e-mail de redefinição (%s)", error)
         except Exception as error:
             current_app.logger.error(
                 "Falha ao enviar e-mail de redefinição (%s, código SMTP %s)",
