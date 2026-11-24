@@ -64,8 +64,9 @@ def send_password_reset_email(to_email, reset_url):
     message["To"] = to_email
 
     tls_context = ssl.create_default_context()
+    gmail = smtp_host.lower() == "smtp.gmail.com"
     ports = (smtp_port,)
-    if smtp_host.lower() == "smtp.gmail.com" and smtp_port == 587:
+    if gmail and smtp_port == 587:
         ports = (587, 465)
 
     for port in ports:
@@ -80,8 +81,13 @@ def send_password_reset_email(to_email, reset_url):
                 if port != 465:
                     stage = "starttls"
                     server.starttls(context=tls_context)
+                stage = "ehlo"
+                server.ehlo_or_helo_if_needed()
                 stage = "login"
-                server.login(smtp_user, smtp_password)
+                if gmail:
+                    server.login(smtp_user, smtp_password, initial_response_ok=False)
+                else:
+                    server.login(smtp_user, smtp_password)
                 stage = "sendmail"
                 server.sendmail(smtp_from, [to_email], message.as_string())
                 stage = "quit"
@@ -91,7 +97,7 @@ def send_password_reset_email(to_email, reset_url):
             # O Gmail oferece as duas portas. Só repita antes de autenticar ou enviar.
             if (
                 port != ports[-1]
-                and stage in ("connect", "starttls")
+                and stage in ("connect", "starttls", "ehlo")
                 and isinstance(error, (smtplib.SMTPServerDisconnected, ConnectionError, TimeoutError))
             ):
                 logger.warning("SMTP de recuperação: %s. Tentando TLS implícito na porta 465.", failure)

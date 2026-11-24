@@ -29,7 +29,12 @@ class PasswordResetEmailTests(unittest.TestCase):
             self.assertIn("porta=587", logs.output[0])
             first.login.assert_not_called()
             self.assertEqual(smtp_ssl.call_args.args, ("smtp.gmail.com", 465))
-            smtp_ssl.return_value.__enter__.return_value.sendmail.assert_called_once()
+            second = smtp_ssl.return_value.__enter__.return_value
+            second.ehlo_or_helo_if_needed.assert_called_once()
+            second.login.assert_called_once_with(
+                env["SMTP_USER"], env["SMTP_PASSWORD"], initial_response_ok=False
+            )
+            second.sendmail.assert_called_once()
 
     def test_authentication_failure_is_diagnosed_without_retry_or_secret(self):
         env = {
