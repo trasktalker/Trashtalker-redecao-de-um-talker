@@ -21,7 +21,7 @@ na tela ou para onde navegar.
 import os
 import re
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
 from backend.email_utils import send_password_reset_email
 from backend.auth import (
@@ -157,20 +157,19 @@ def forgot_password():
     user = query_one("SELECT * FROM users WHERE email = %s", (email,))
     if user:
         token = create_password_reset_token(user["id"])
-        frontend_origin = os.environ.get("FRONTEND_ORIGIN", "http://localhost:5000")
-        reset_url = f"{frontend_origin}/reset-password?token={token}"
+        vercel_host = os.environ.get("VERCEL_URL")
+        if os.environ.get("VERCEL_ENV") == "production":
+            vercel_host = os.environ.get("VERCEL_PROJECT_PRODUCTION_URL") or vercel_host
+        default_origin = f"https://{vercel_host}" if vercel_host else "http://localhost:5000"
+        frontend_origin = os.environ.get("FRONTEND_ORIGIN") or default_origin
+        reset_url = f"{frontend_origin.rstrip('/')}/reset-password?token={token}"
         try:
             send_password_reset_email(user["email"], reset_url)
-        except Exception as e:
-            # SMTP não configurado, credenciais erradas, etc.: cai para
-            # o fallback de console em vez de quebrar a resposta - o
-            # link ainda funciona, só não chega por e-mail.
-            print(f"[AVISO] Falha ao enviar e-mail de redefinição: {e}")
-            print("\n========================================")
-            print("[LINK DE REDEFINIÇÃO DE SENHA]")
-            print(f"Para: {user['email']}")
-            print(f"URL: {reset_url}")
-            print("========================================\n")
+        except Exception as error:
+            current_app.logger.error(
+                "Falha ao enviar e-mail de redefinição (%s, código SMTP %s)",
+                type(error).__name__, getattr(error, "smtp_code", "indisponível"),
+            )
 
     # Sempre devolvemos sucesso, exista ou não o email - isso evita que
     # alguém descubra quais emails estão cadastrados testando um por um.

@@ -7,6 +7,7 @@ só a biblioteca padrão do Python (smtplib) - sem dependência nova.
 
 import os
 import smtplib
+import ssl
 from email.mime.text import MIMEText
 
 
@@ -14,8 +15,7 @@ def send_password_reset_email(to_email, reset_url):
     """
     Manda o e-mail de redefinição de senha. Levanta uma exceção se a
     configuração de SMTP estiver incompleta ou se o envio falhar -
-    quem chama decide o que fazer (ver forgot_password() em
-    routes/auth_api.py, que cai para um fallback de console).
+    a rota de recuperação registra a falha sem expor o link.
     """
     smtp_host = os.environ.get("SMTP_HOST")
     smtp_port = int(os.environ.get("SMTP_PORT", "587"))
@@ -53,7 +53,14 @@ def send_password_reset_email(to_email, reset_url):
     message["From"] = smtp_from
     message["To"] = to_email
 
-    with smtplib.SMTP(smtp_host, smtp_port) as server:
-        server.starttls()
+    tls_context = ssl.create_default_context()
+    if smtp_port == 465:
+        connection = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=10, context=tls_context)
+    else:
+        connection = smtplib.SMTP(smtp_host, smtp_port, timeout=10)
+
+    with connection as server:
+        if smtp_port != 465:
+            server.starttls(context=tls_context)
         server.login(smtp_user, smtp_password)
         server.sendmail(smtp_from, [to_email], message.as_string())

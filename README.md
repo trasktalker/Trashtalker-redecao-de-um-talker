@@ -263,13 +263,11 @@ Detalhes, incluindo Windows/PowerShell e como escrever novos testes:
   `/api/2fa/*`) conferem a origem da requisição (`Origin` e
   `Sec-Fetch-Site`). Se for expor este projeto publicamente, vale
   adicionar um token CSRF nas demais rotas que alteram dados.
-- **E-mail de redefinição de senha é enviado de verdade**, via SMTP
-  (`backend/email_utils.py`), desde que `SMTP_HOST`, `SMTP_USER` e
-  `SMTP_PASSWORD` estejam preenchidos no `.env`. Se a configuração
-  estiver faltando ou o envio falhar, a aplicação **não quebra**: ela
-  imprime o link no terminal onde o `python app.py` está rodando, como
-  fallback de desenvolvimento (ver `forgot_password()` em
-  `routes/auth_api.py`).
+- **E-mail de redefinição de senha** usa `SMTP_HOST`, `SMTP_USER` e
+  `SMTP_PASSWORD`. Configure `SMTP_PORT=587` para STARTTLS ou
+  `SMTP_PORT=465` para TLS implícito. Configure `FRONTEND_ORIGIN` com a
+  origem pública se precisar sobrescrever o domínio da Vercel. Falhas de
+  envio são registradas sem incluir o endereço do destinatário ou o link.
 
 ---
 
