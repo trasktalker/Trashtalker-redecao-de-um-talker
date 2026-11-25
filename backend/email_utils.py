@@ -25,6 +25,71 @@ def _smtp_env(name, default=""):
     return value or default
 
 
+def _smtp_settings():
+    """Lê e normaliza a configuração SMTP_* do ambiente."""
+    host = _smtp_env("SMTP_HOST")
+    user = _smtp_env("SMTP_USER")
+    password = _smtp_env("SMTP_PASSWORD")
+    # O Google mostra a senha de app como "abcd efgh ijkl mnop"; ela nunca
+    # tem espaços de verdade, então tiramos os que vieram junto na cópia.
+    if host.lower() == "smtp.gmail.com":
+        password = password.replace(" ", "")
+    return {
+        "host": host,
+        "port": int(_smtp_env("SMTP_PORT", "587")),
+        "user": user,
+        "password": password,
+        "from": _smtp_env("SMTP_FROM") or user,
+    }
+
+
+def _require_complete(settings):
+    if not settings["host"] or not settings["user"] or not settings["password"]:
+        raise RuntimeError(
+            "Configuração de SMTP incompleta "
+            "(defina SMTP_HOST, SMTP_USER e SMTP_PASSWORD no .env)"
+        )
+
+
+def _open_smtp(settings):
+    # timeout: sem ele, um servidor que não responde segura a função da
+    # Vercel até estourar o maxDuration (60s) sem erro nenhum no log.
+    # Porta 465 = TLS direto (SMTP_SSL); as outras (587) = STARTTLS.
+    if settings["port"] == 465:
+        return smtplib.SMTP_SSL(settings["host"], settings["port"], timeout=SMTP_TIMEOUT_SECONDS)
+    return smtplib.SMTP(settings["host"], settings["port"], timeout=SMTP_TIMEOUT_SECONDS)
+
+
+def check_smtp_login():
+    """
+    DIAGNÓSTICO TEMPORÁRIO (usado só por routes/diag_api.py): conecta,
+    faz STARTTLS/SSL e login, e sai - sem enviar e-mail. Devolve em que
+    etapa parou e o tipo do erro, nunca a senha.
+    """
+    stage = "config"
+    try:
+        settings = _smtp_settings()
+        _require_complete(settings)
+        stage = "connect"
+        server = _open_smtp(settings)
+        with server:
+            if settings["port"] != 465:
+                stage = "starttls"
+                server.starttls()
+            stage = "login"
+            server.login(settings["user"], settings["password"])
+            stage = "quit"
+        return {"ok": True, "stage": "done"}
+    except Exception as e:
+        return {
+            "ok": False,
+            "stage": stage,
+            "error_type": type(e).__name__,
+            "smtp_code": getattr(e, "smtp_code", None),
+            "message": str(e)[:300],
+        }
+
+
 def send_password_reset_email(to_email, reset_url):
     """
     Manda o e-mail de redefinição de senha. Levanta uma exceção se a
@@ -32,22 +97,9 @@ def send_password_reset_email(to_email, reset_url):
     quem chama decide o que fazer (ver forgot_password() em
     routes/auth_api.py, que cai para um fallback de console).
     """
-    smtp_host = _smtp_env("SMTP_HOST")
-    smtp_port = int(_smtp_env("SMTP_PORT", "587"))
-    smtp_user = _smtp_env("SMTP_USER")
-    smtp_password = _smtp_env("SMTP_PASSWORD")
-    smtp_from = _smtp_env("SMTP_FROM") or smtp_user
-
-    # O Google mostra a senha de app como "abcd efgh ijkl mnop"; ela nunca
-    # tem espaços de verdade, então tiramos os que vieram junto na cópia.
-    if smtp_host.lower() == "smtp.gmail.com":
-        smtp_password = smtp_password.replace(" ", "")
-
-    if not smtp_host or not smtp_user or not smtp_password:
-        raise RuntimeError(
-            "Configuração de SMTP incompleta "
-            "(defina SMTP_HOST, SMTP_USER e SMTP_PASSWORD no .env)"
-        )
+    settings = _smtp_settings()
+    _require_complete(settings)
+    smtp_from = settings["from"]
 
     body = (
         "Oi!\n\n"
@@ -79,16 +131,8 @@ def send_password_reset_email(to_email, reset_url):
     message["Date"] = formatdate(localtime=False, usegmt=True)
     message["Message-ID"] = make_msgid(domain=from_domain)
 
-    # timeout: sem ele, um servidor que não responde segura a função da
-    # Vercel até estourar o maxDuration (60s) sem erro nenhum no log.
-    # Porta 465 = TLS direto (SMTP_SSL); as outras (587) = STARTTLS.
-    if smtp_port == 465:
-        server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=SMTP_TIMEOUT_SECONDS)
-    else:
-        server = smtplib.SMTP(smtp_host, smtp_port, timeout=SMTP_TIMEOUT_SECONDS)
-
-    with server:
-        if smtp_port != 465:
+    with _open_smtp(settings) as server:
+        if settings["port"] != 465:
             server.starttls()
-        server.login(smtp_user, smtp_password)
+        server.login(settings["user"], settings["password"])
         server.sendmail(smtp_from, [to_email], message.as_string())
