@@ -447,6 +447,14 @@ O horário de cada bloco é o do registro no README; o commit `940ce68` ("mudan�
 - **`forgot_password()`** agora registra uma linha `[forgot-password]` em todos os caminhos: `conta não encontrada`, `e-mail enviado` ou `Falha ao enviar ... <TipoDoErro>`. O e-mail digitado e o link não aparecem nessas linhas. A resposta da API continua a mesma.
 - **`email_utils.py`:** tira aspas em volta dos valores `SMTP_*` (colados do `.env` com aspas no painel da Vercel) e acrescenta os cabeçalhos `Date` e `Message-ID`, cuja falta aumenta a chance de cair no Spam.
 
+### Causa final: `SMTP_USER` errado na Vercel
+
+- Os Logs não ajudavam, então subiu uma rota **temporária** de diagnóstico (`/api/_diag/smtp`, protegida por token, commit `d343af5`) que testava o login SMTP de dentro da Vercel sem mostrar segredos.
+- Resultado: a senha de app na Vercel era a nova, mas o **`SMTP_USER` tinha outro endereço** (34 caracteres em vez dos 32 da conta onde a senha de app foi criada). Senha de app só vale para a própria conta; com o usuário errado, o Gmail derrubava a conexão no login (`SMTPServerDisconnected`).
+- Correção: `SMTP_USER` na Vercel trocado para o Gmail certo + Redeploy. O diagnóstico passou a dar login OK e o pedido de redefinição real foi processado.
+- A rota de diagnóstico foi **removida** em seguida. A variável `DIAG_TOKEN`, criada na Vercel só para ela, pode ser apagada.
+- `email_utils.py` ficou com a leitura da configuração e a conexão separadas (`_smtp_settings()`, `_open_smtp()`), sem mudança de comportamento.
+
 ### Preparação para GitHub + Vercel
 
 - **`.env.example` recriado**, com todas as variáveis que o código lê, valores vazios e comentários (inclui o comando para gerar a `TOTP_ENCRYPTION_KEY`).

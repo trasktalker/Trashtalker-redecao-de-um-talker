@@ -60,36 +60,6 @@ def _open_smtp(settings):
     return smtplib.SMTP(settings["host"], settings["port"], timeout=SMTP_TIMEOUT_SECONDS)
 
 
-def check_smtp_login():
-    """
-    DIAGNÓSTICO TEMPORÁRIO (usado só por routes/diag_api.py): conecta,
-    faz STARTTLS/SSL e login, e sai - sem enviar e-mail. Devolve em que
-    etapa parou e o tipo do erro, nunca a senha.
-    """
-    stage = "config"
-    try:
-        settings = _smtp_settings()
-        _require_complete(settings)
-        stage = "connect"
-        server = _open_smtp(settings)
-        with server:
-            if settings["port"] != 465:
-                stage = "starttls"
-                server.starttls()
-            stage = "login"
-            server.login(settings["user"], settings["password"])
-            stage = "quit"
-        return {"ok": True, "stage": "done"}
-    except Exception as e:
-        return {
-            "ok": False,
-            "stage": stage,
-            "error_type": type(e).__name__,
-            "smtp_code": getattr(e, "smtp_code", None),
-            "message": str(e)[:300],
-        }
-
-
 def send_password_reset_email(to_email, reset_url):
     """
     Manda o e-mail de redefinição de senha. Levanta uma exceção se a
