@@ -261,9 +261,15 @@ na branch `main` gera um deploy de produção**. Antes de publicar:
    novas em deploys novos.
 4. Nunca envie o `.env` ao repositório (o `.gitignore` já o bloqueia).
 
-Se o e-mail de redefinição não chegar, procure `Falha ao enviar` nos Logs
-da Vercel: a linha traz o tipo do erro (`SMTPAuthenticationError` = senha
-de app inválida; `Configuração de SMTP incompleta` = variável faltando).
+Se o e-mail de redefinição não chegar, peça a redefinição de novo e
+procure `[forgot-password]` nos Logs da Vercel. A linha diz o que houve:
+
+- `e-mail enviado` - o Gmail aceitou; procure no Spam/Promoções. E-mail
+  mandado para o próprio Gmail do `SMTP_USER` costuma ir só para
+  "Enviados" - teste com outro endereço.
+- `conta não encontrada` - esse e-mail não tem conta no banco de produção.
+- `Falha ao enviar ... <TipoDoErro>` - `SMTPAuthenticationError` = senha
+  de app inválida; `Configuração de SMTP incompleta` = variável faltando.
 
 ---
 
@@ -434,6 +440,12 @@ O horário de cada bloco é o do registro no README; o commit `940ce68` ("mudan�
   - `timeout` de 15s na conexão (antes, um servidor mudo segurava a função até os 60s do `maxDuration`);
   - porta 465 suportada (`SMTP_SSL`); as demais continuam com STARTTLS.
 - **`backend/routes/auth_api.py`:** o aviso `Falha ao enviar e-mail de redefinição` agora traz o tipo da exceção (ex.: `SMTPAuthenticationError`), para o diagnóstico sair direto dos Logs da Vercel.
+
+### E-mail ainda sem chegar depois do deploy: log de todos os caminhos
+
+- Depois do deploy `706ad55` e da senha nova na Vercel, o e-mail continuava sem chegar e os Logs não mostravam nenhuma falha. A rota respondia "ok" sem deixar rastro quando a conta não existia ou quando o envio dava certo.
+- **`forgot_password()`** agora registra uma linha `[forgot-password]` em todos os caminhos: `conta não encontrada`, `e-mail enviado` ou `Falha ao enviar ... <TipoDoErro>`. O e-mail digitado e o link não aparecem nessas linhas. A resposta da API continua a mesma.
+- **`email_utils.py`:** tira aspas em volta dos valores `SMTP_*` (colados do `.env` com aspas no painel da Vercel) e acrescenta os cabeçalhos `Date` e `Message-ID`, cuja falta aumenta a chance de cair no Spam.
 
 ### Preparação para GitHub + Vercel
 

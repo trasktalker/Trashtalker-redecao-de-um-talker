@@ -154,13 +154,20 @@ def forgot_password():
     body = request.get_json(silent=True) or {}
     email = (body.get("email") or "").strip().lower()
 
+    # Cada caminho deixa uma linha "[forgot-password]" no log (Vercel ->
+    # Logs), para dar para saber o que aconteceu - a resposta da API é
+    # sempre a mesma e não ajuda. O e-mail digitado e o link nunca vão
+    # para essas linhas.
     user = query_one("SELECT * FROM users WHERE email = %s", (email,))
-    if user:
+    if not user:
+        print("[forgot-password] conta não encontrada - nenhum e-mail enviado", flush=True)
+    else:
         token = create_password_reset_token(user["id"])
         frontend_origin = os.environ.get("FRONTEND_ORIGIN", "http://localhost:5000")
         reset_url = f"{frontend_origin}/reset-password?token={token}"
         try:
             send_password_reset_email(user["email"], reset_url)
+            print("[forgot-password] e-mail enviado (aceito pelo servidor SMTP)", flush=True)
         except Exception as e:
             # SMTP não configurado, credenciais erradas, etc.: cai para
             # o fallback de console em vez de quebrar a resposta - o
@@ -168,7 +175,7 @@ def forgot_password():
             # O tipo da exceção diz direto no log da Vercel se foi
             # autenticação (SMTPAuthenticationError), timeout ou config.
             print(
-                f"[AVISO] Falha ao enviar e-mail de redefinição: {type(e).__name__}: {e}",
+                f"[forgot-password] Falha ao enviar e-mail de redefinição: {type(e).__name__}: {e}",
                 flush=True,
             )
             print("\n========================================")

@@ -8,8 +8,21 @@ só a biblioteca padrão do Python (smtplib) - sem dependência nova.
 import os
 import smtplib
 from email.mime.text import MIMEText
+from email.utils import formatdate, make_msgid, parseaddr
 
 SMTP_TIMEOUT_SECONDS = 15
+
+
+def _smtp_env(name, default=""):
+    """
+    Lê uma variável SMTP_* tirando espaços, quebras de linha e aspas em
+    volta do valor - descuidos comuns ao colar no painel da Vercel (ex.:
+    copiar `"smtp.gmail.com"` do .env com as aspas junto).
+    """
+    value = (os.environ.get(name) or "").strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        value = value[1:-1].strip()
+    return value or default
 
 
 def send_password_reset_email(to_email, reset_url):
@@ -19,13 +32,11 @@ def send_password_reset_email(to_email, reset_url):
     quem chama decide o que fazer (ver forgot_password() em
     routes/auth_api.py, que cai para um fallback de console).
     """
-    # .strip() em tudo: um espaço ou quebra de linha colado sem querer no
-    # painel da Vercel basta para o login no SMTP falhar.
-    smtp_host = (os.environ.get("SMTP_HOST") or "").strip()
-    smtp_port = int((os.environ.get("SMTP_PORT") or "587").strip())
-    smtp_user = (os.environ.get("SMTP_USER") or "").strip()
-    smtp_password = (os.environ.get("SMTP_PASSWORD") or "").strip()
-    smtp_from = (os.environ.get("SMTP_FROM") or "").strip() or smtp_user
+    smtp_host = _smtp_env("SMTP_HOST")
+    smtp_port = int(_smtp_env("SMTP_PORT", "587"))
+    smtp_user = _smtp_env("SMTP_USER")
+    smtp_password = _smtp_env("SMTP_PASSWORD")
+    smtp_from = _smtp_env("SMTP_FROM") or smtp_user
 
     # O Google mostra a senha de app como "abcd efgh ijkl mnop"; ela nunca
     # tem espaços de verdade, então tiramos os que vieram junto na cópia.
@@ -61,6 +72,12 @@ def send_password_reset_email(to_email, reset_url):
     message["Subject"] = "Redefinir sua senha - Trash Talker"
     message["From"] = smtp_from
     message["To"] = to_email
+    # Date e Message-ID: e-mail sem eles pontua mais como spam. O domínio
+    # do Message-ID vem do remetente (evita make_msgid() consultar o DNS
+    # da máquina da Vercel).
+    from_domain = parseaddr(smtp_from)[1].rpartition("@")[2] or None
+    message["Date"] = formatdate(localtime=False, usegmt=True)
+    message["Message-ID"] = make_msgid(domain=from_domain)
 
     # timeout: sem ele, um servidor que não responde segura a função da
     # Vercel até estourar o maxDuration (60s) sem erro nenhum no log.
