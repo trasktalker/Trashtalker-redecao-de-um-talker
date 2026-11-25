@@ -165,7 +165,12 @@ def forgot_password():
             # SMTP não configurado, credenciais erradas, etc.: cai para
             # o fallback de console em vez de quebrar a resposta - o
             # link ainda funciona, só não chega por e-mail.
-            print(f"[AVISO] Falha ao enviar e-mail de redefinição: {e}")
+            # O tipo da exceção diz direto no log da Vercel se foi
+            # autenticação (SMTPAuthenticationError), timeout ou config.
+            print(
+                f"[AVISO] Falha ao enviar e-mail de redefinição: {type(e).__name__}: {e}",
+                flush=True,
+            )
             print("\n========================================")
             print("[LINK DE REDEFINIÇÃO DE SENHA]")
             print(f"Para: {user['email']}")

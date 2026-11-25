@@ -54,7 +54,7 @@ def _url_do_banco_de_teste():
     if not url:
         pytest.exit(
             "TEST_DATABASE_URL não definida. Os testes truncam tabelas e "
-            "por isso exigem um banco separado. Ver docs/testes.md.",
+            "por isso exigem um banco separado. Ver README, seção 4, Passo 5.",
             returncode=1,
         )
     if url == os.environ.get("DATABASE_URL"):

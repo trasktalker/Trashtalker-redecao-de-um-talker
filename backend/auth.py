@@ -137,7 +137,7 @@ def destroy_all_sessions(user_id, exceto=None):
     validada só pelo token na tabela `sessions` - ela não consulta o
     hash da senha. Ou seja: uma pessoa que tivesse acesso indevido à
     conta continuava dentro mesmo depois da vítima trocar a senha, o que
-    esvazia o propósito da troca. Ver docs/processo.md (decisão D-02).
+    esvazia o propósito da troca.
     """
     if exceto:
         execute(

@@ -45,7 +45,7 @@ def before_all(context):
     if not url:
         raise RuntimeError(
             "TEST_DATABASE_URL não definida. Os cenários zeram tabelas e por "
-            "isso exigem um banco separado. Ver docs/testes.md."
+            "isso exigem um banco separado. Ver README, seção 4, Passo 5."
         )
     if url == os.environ.get("DATABASE_URL"):
         raise RuntimeError(

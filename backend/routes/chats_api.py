@@ -522,7 +522,7 @@ def update_password():
     )
     # Derruba as sessões abertas em outros dispositivos, mas mantém a
     # atual: quem acabou de trocar a senha estando logado não deve ser
-    # deslogado da própria tela. Ver docs/processo.md (decisão D-02).
+    # deslogado da própria tela.
     destroy_all_sessions(g.user["id"], exceto=request.cookies.get(SESSION_COOKIE_NAME))
     return jsonify({"ok": True})
 

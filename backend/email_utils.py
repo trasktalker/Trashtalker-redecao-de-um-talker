@@ -9,6 +9,8 @@ import os
 import smtplib
 from email.mime.text import MIMEText
 
+SMTP_TIMEOUT_SECONDS = 15
+
 
 def send_password_reset_email(to_email, reset_url):
     """
@@ -17,11 +19,18 @@ def send_password_reset_email(to_email, reset_url):
     quem chama decide o que fazer (ver forgot_password() em
     routes/auth_api.py, que cai para um fallback de console).
     """
-    smtp_host = os.environ.get("SMTP_HOST")
-    smtp_port = int(os.environ.get("SMTP_PORT", "587"))
-    smtp_user = os.environ.get("SMTP_USER")
-    smtp_password = os.environ.get("SMTP_PASSWORD")
-    smtp_from = os.environ.get("SMTP_FROM") or smtp_user
+    # .strip() em tudo: um espaço ou quebra de linha colado sem querer no
+    # painel da Vercel basta para o login no SMTP falhar.
+    smtp_host = (os.environ.get("SMTP_HOST") or "").strip()
+    smtp_port = int((os.environ.get("SMTP_PORT") or "587").strip())
+    smtp_user = (os.environ.get("SMTP_USER") or "").strip()
+    smtp_password = (os.environ.get("SMTP_PASSWORD") or "").strip()
+    smtp_from = (os.environ.get("SMTP_FROM") or "").strip() or smtp_user
+
+    # O Google mostra a senha de app como "abcd efgh ijkl mnop"; ela nunca
+    # tem espaços de verdade, então tiramos os que vieram junto na cópia.
+    if smtp_host.lower() == "smtp.gmail.com":
+        smtp_password = smtp_password.replace(" ", "")
 
     if not smtp_host or not smtp_user or not smtp_password:
         raise RuntimeError(
@@ -53,7 +62,16 @@ def send_password_reset_email(to_email, reset_url):
     message["From"] = smtp_from
     message["To"] = to_email
 
-    with smtplib.SMTP(smtp_host, smtp_port) as server:
-        server.starttls()
+    # timeout: sem ele, um servidor que não responde segura a função da
+    # Vercel até estourar o maxDuration (60s) sem erro nenhum no log.
+    # Porta 465 = TLS direto (SMTP_SSL); as outras (587) = STARTTLS.
+    if smtp_port == 465:
+        server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=SMTP_TIMEOUT_SECONDS)
+    else:
+        server = smtplib.SMTP(smtp_host, smtp_port, timeout=SMTP_TIMEOUT_SECONDS)
+
+    with server:
+        if smtp_port != 465:
+            server.starttls()
         server.login(smtp_user, smtp_password)
         server.sendmail(smtp_from, [to_email], message.as_string())

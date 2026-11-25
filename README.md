@@ -1,7 +1,5 @@
 # Trash Talker — versão Python + HTML/CSS/JS puro
 
-Autenticação em dois fatores: [configuração do Google Authenticator, migração e testes](docs/2fa.md).
-
 Esta pasta (`python-app/`) é uma reescrita completa do projeto **Trash
 Talker**, originalmente em TypeScript (Express + EJS + better-auth),
 usando apenas:
@@ -153,15 +151,10 @@ python-app/
 │   ├── test_chats_api.py
 │   ├── test_account_api.py
 │   └── test_two_factor_api.py
-├── features/                 # especificações de comportamento (Behave, Gherkin pt-BR)
-│   ├── environment.py
-│   ├── autenticacao.feature, conversas.feature, conta.feature
-│   └── steps/
-└── docs/
-    ├── processo.md           # como o projeto é desenvolvido + decisões técnicas e riscos
-    ├── testes.md             # como rodar e escrever testes
-    ├── 2fa.md                # Google Authenticator: configuração e contratos
-    └── proposta-do-site.md   # proposta do produto
+└── features/                 # especificações de comportamento (Behave, Gherkin pt-BR)
+    ├── environment.py
+    ├── autenticacao.feature, conversas.feature, conta.feature
+    └── steps/
 ```
 
 ---
@@ -240,8 +233,37 @@ python -m pytest      # 108 testes de API (inclui 2FA)
 python -m behave      # 33 cenários de comportamento (Gherkin pt-BR)
 ```
 
-Detalhes, incluindo Windows/PowerShell e como escrever novos testes:
-**`docs/testes.md`**.
+No Windows (PowerShell), troque o `export` por
+`$env:TEST_DATABASE_URL = "postgresql://localhost/trashtalker_test"`.
+Os testes recusam rodar se `TEST_DATABASE_URL` for igual à `DATABASE_URL`.
+
+### Passo 6 - Publicar (GitHub + Vercel)
+
+O projeto na Vercel está ligado a este repositório no GitHub: **todo push
+na branch `main` gera um deploy de produção**. Antes de publicar:
+
+1. **Banco de produção:** rode `backend/schema.sql` nele (é idempotente).
+   Sem as colunas novas (`users.terms_accepted_at`, `users.consent_version`,
+   `messages.personality`), o login e o chat falham.
+2. **Variáveis de ambiente** (Vercel → Settings → Environment Variables,
+   ambiente **Production**). A lista completa, comentada, está no
+   `.env.example`:
+   - `DATABASE_URL`, `GEMINI_API_KEY`, `ELEVENLABS_API_KEY`,
+     `TOTP_ENCRYPTION_KEY` (a mesma de sempre - trocar invalida o 2FA de
+     quem já ativou);
+   - `FRONTEND_ORIGIN=https://<domínio do site>` - sem isso o link do
+     e-mail de redefinição aponta para `localhost:5000`;
+   - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`.
+     No Gmail, `SMTP_PASSWORD` é uma senha de app, que só existe com a
+     verificação em duas etapas ativa; desligar a verificação revoga a
+     senha e o e-mail para de sair.
+3. **Mudou uma variável? Faça Redeploy.** A Vercel só aplica variáveis
+   novas em deploys novos.
+4. Nunca envie o `.env` ao repositório (o `.gitignore` já o bloqueia).
+
+Se o e-mail de redefinição não chegar, procure `Falha ao enviar` nos Logs
+da Vercel: a linha traz o tipo do erro (`SMTPAuthenticationError` = senha
+de app inválida; `Configuração de SMTP incompleta` = variável faltando).
 
 ---
 
@@ -305,8 +327,9 @@ ainda existe antes de gravar a resposta.
 Também já existem:
 
 - **Autenticação em dois fatores** opcional (Google Authenticator), com
-  códigos de recuperação e limite de tentativas próprio - ver
-  [docs/2fa.md](docs/2fa.md).
+  códigos de recuperação e limite de tentativas próprio
+  (`backend/two_factor.py`, `routes/two_factor_api.py`). Exige
+  `TOTP_ENCRYPTION_KEY` (ver `.env.example`).
 - **Aceite dos termos versionado** (`CONSENT_VERSION` em `auth.py`):
   cadastro exige as duas confirmações (18+/termos e envio à IA), e quem
   ainda não aceitou a versão atual não conversa até aceitar (403 com
@@ -389,12 +412,31 @@ O horário de cada bloco é o do registro no README; o commit `940ce68` ("mudan�
 
 - **Arquivos `.md` apagados** (o README foi mantido): `DEPLOY_VERCEL.md`, `docs/processo.md`, `docs/testes.md`, `docs/2fa.md` e `docs/proposta-do-site.md`. Não havia arquivos de plano de IA no repositório; a remoção seguiu a escolha de apagar todos os `.md` exceto o README.
 - **Efeito no site: nenhum.** Esses arquivos eram só documentação. A aplicação e a Vercel não os leem nem os servem. O `vercel.json` só cita `docs/**` para excluí-los dos arquivos da função.
-- **Referências que ficaram quebradas** (não corrigidas ainda):
+- **Referências que ficaram quebradas** (corrigidas em 24/11/2026, ver seção 9):
   - Links e a árvore de pastas do próprio README (`docs/2fa.md`, `docs/testes.md`, `docs/processo.md`, `docs/proposta-do-site.md`).
   - Comentários em `backend/auth.py` e `backend/routes/chats_api.py` que citam `docs/processo.md`.
   - Mensagens de erro em `tests/conftest.py` e `features/environment.py` que citam `docs/testes.md`.
 - **Informações do `DEPLOY_VERCEL.md` que continuam valendo para publicar:**
   - Antes de publicar, rode `backend/schema.sql` no banco de produção. Ele é idempotente e cria `users.terms_accepted_at`, `users.consent_version` e `messages.personality`. Sem essas colunas, o login falha.
-  - Configure as variáveis de ambiente na Vercel: `DATABASE_URL`, `GEMINI_API_KEY`, `TOTP_ENCRYPTION_KEY`, e, se usar redefinição de senha por e-mail, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` e `SMTP_FROM`. Nunca envie o arquivo `.env` ao repositório nem à Vercel.
+  - Configure as variáveis de ambiente na Vercel: `DATABASE_URL`, `GEMINI_API_KEY`, `ELEVENLABS_API_KEY`, `TOTP_ENCRYPTION_KEY`, `FRONTEND_ORIGIN` (domínio de produção), e, se usar redefinição de senha por e-mail, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` e `SMTP_FROM`. Nunca envie o arquivo `.env` ao repositório nem à Vercel. (Lista atualizada em 24/11/2026; o passo a passo completo está na seção 4, Passo 6.)
   - Faça primeiro um deploy de Preview, valide as URLs e só depois promova para Production.
   - O 2FA exige o `schema.sql` atualizado antes de publicar o backend e as telas. Não faça rollback para um login sem verificação 2FA depois que houver contas protegidas.
+
+## 9. Histórico de alterações (24/11/2026)
+
+### E-mail de redefinição de senha parou de chegar (Vercel)
+
+- **Causa:** a verificação em duas etapas da conta Gmail do `SMTP_USER` tinha sido desligada, e com isso o Google revogou a senha de app. O login SMTP passou a falhar, mas o site continuava dizendo "enviado", porque `forgot_password()` só registra o erro no log.
+- **Correção de configuração:** verificação em duas etapas reativada, senha de app nova gerada e colocada em `SMTP_PASSWORD` (no `.env` local e na Vercel).
+- **`backend/email_utils.py`, mais robusto:**
+  - `.strip()` em `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` e `SMTP_FROM` (espaço ou quebra de linha colados no painel da Vercel quebravam o login);
+  - com `smtp.gmail.com`, os espaços da senha de app (`abcd efgh ijkl mnop`) são removidos;
+  - `timeout` de 15s na conexão (antes, um servidor mudo segurava a função até os 60s do `maxDuration`);
+  - porta 465 suportada (`SMTP_SSL`); as demais continuam com STARTTLS.
+- **`backend/routes/auth_api.py`:** o aviso `Falha ao enviar e-mail de redefinição` agora traz o tipo da exceção (ex.: `SMTPAuthenticationError`), para o diagnóstico sair direto dos Logs da Vercel.
+
+### Preparação para GitHub + Vercel
+
+- **`.env.example` recriado**, com todas as variáveis que o código lê, valores vazios e comentários (inclui o comando para gerar a `TOTP_ENCRYPTION_KEY`).
+- **Referências aos `docs/*.md` apagados corrigidas:** link e árvore de pastas do README, comentários em `backend/auth.py` e `backend/routes/chats_api.py`, mensagens de erro em `tests/conftest.py` e `features/environment.py` (agora apontam para o README, seção 4, Passo 5).
+- **Novo "Passo 6 - Publicar (GitHub + Vercel)"** na seção 4, com a lista completa de variáveis (incluindo `FRONTEND_ORIGIN` e `ELEVENLABS_API_KEY`, que faltavam).
